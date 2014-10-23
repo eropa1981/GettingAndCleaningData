@@ -1,0 +1,63 @@
+Codebook
+========
+ 
+Descriptions of VAriables
+------------------------------
+  
+  Variable name    | Description
+-----------------|------------
+subject          | ID the subject who performed the activity 
+activity         | Activity description
+featDomain       | Feature: Time/Frecuency domain signal 
+featInstrument   | Feature: Measuring Instrument
+featAcceleration | Feature: Acceleration Signal
+featVariable     | Feature: Variable (Mean or Stand.Dev)
+featJerk         | Feature: Jerk Signal
+featMagnitude    | Feature: Magnitude of the signals
+featAxis         | Feature: 3-axial signals 
+featCount        | Feature: Count of data points 
+featAverage      | Feature: Average of variables for activity and subject
+
+Structure
+-----------
+  
+  ```{r}
+str(dataTidy)
+```
+
+key variables
+--------------
+  
+  ```{r}
+key(dataTidy)
+```
+
+Rows of the dataset
+-------------------
+  
+  ```{r}
+dataTidy
+```
+
+Summary
+-------
+  
+  ```{r}
+summary(dataTidy)
+```
+
+Posible Features
+----------------
+  
+  ```{r}
+dataTidy[, .N, by=c(names(dataTidy)[grep("^feat", names(dataTidy))])]
+```
+
+Save to txt file
+------------
+  
+  Save data table objects to a tab-delimited text file called `TidyDataSet.txt`.
+
+```{r}
+val <- file.path(Dir, "TidyDataSet.txt")
+write.table(dataTidy, val, quote=FALSE, sep="\t", row.names=FALSE)

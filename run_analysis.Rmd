@@ -1,0 +1,185 @@
+---
+title: "Peer Evaluation Project-getdata-008"
+author: "Erik Rodriguez Pacheco"
+date: "Wednesday, October 22, 2014"
+output: html_document
+---
+
+## Initial preparation
+
+
+Load the packages and set working directory
+
+```{r}
+library(data.table)
+library(reshape2)
+library(knitr)
+library(markdown)
+Dir <- getwd()
+Dir
+```
+
+## Obtaining the data
+  
+Download data in Assingment folder
+
+```{r, eval=FALSE}
+link <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+x <- "Data.zip"
+if (!file.exists(Dir)) {dir.create(Dir)}
+download.file(link, file.path(Dir, x))
+```
+
+## Extract Data for working
+
+Running external program 7zip to extract data from zip dowloaded
+
+```{r}
+zip <- file.path("C:", "Program Files", "7-Zip", "7z.exe")
+set<-"x"
+extract <- paste(paste0("\"", zip, "\""), set, paste0("\"", file.path(Dir, x), "\""))
+suppressMessages(suppressWarnings(system(extract)))
+```
+
+The file contains the directory UCI HAR Dataset will be the new directory
+This is a list of the files inside that directory
+
+```{r}
+Dirdata <- file.path(Dir, "UCI HAR Dataset")
+list.files(Dirdata, recursive=TRUE)
+
+```
+
+## Read Information with data.table and read table
+
+
+Is necesary read data from Subject Files and the activity train
+```{r}
+SubjTrain <- fread(file.path(Dirdata, "train", "subject_train.txt"))
+SubjTest  <- fread(file.path(Dirdata, "test" , "subject_test.txt" ))
+```
+
+```{r}
+ActTrain <- fread(file.path(Dirdata, "train", "Y_train.txt"))
+ActTest  <- fread(file.path(Dirdata, "test" , "Y_test.txt" ))
+```
+
+
+
+Now is necesary read the data 
+
+fread function is not working very well for import data from X_train,txt and X.test.txt.
+alternative solution is use read table, create data frame and finally transform this data frame 
+in data.table objects
+
+```{r}
+#Train <- fread(file.path(Dirdata, "train", "X_train.txt"))
+#Test  <- fread(file.path(Dirdata, "test" , "X_test.txt" ))
+Train<-read.table(file.path(Dirdata, "train", "X_train.txt"))
+Test<-read.table(file.path(Dirdata, "test", "X_test.txt"))
+Train<-data.table(Train)
+class(Train)
+Test<-data.table(Test)
+class(Test)
+```
+
+
+## 1-Merges the training and the test sets to create one data set
+  
+```{r}
+Subject <- rbind(SubjTrain, SubjTest)
+setnames(Subject, "V1", "subject")
+Activity <- rbind(ActTrain, ActTest)
+setnames(Activity, "V1", "activityNum")
+data <- rbind(Train, Test)
+
+Subject <- cbind(Subject, Activity)
+data <- cbind(Subject, data)
+
+setkey(data, subject, activityNum)
+```
+
+## 2-Extracts only the measurements on the mean and standard deviation for each measurement
+
+```{r}
+Feat <- fread(file.path(Dirdata, "features.txt"))
+setnames(Feat, names(Feat), c("featureNum", "featureName"))
+Feat <- Feat[grepl("mean\\(\\)|std\\(\\)", featureName)]
+Feat$featureCode <- Feat[, paste0("V", featureNum)]
+head(Feat)
+Feat$featureCode
+subset <- c(key(data), Feat$featureCode)
+data <- data[, subset, with=FALSE]
+head(data)
+```
+
+## 3-Uses descriptive activity names to name the activities in the data set
+
+```{r}
+ActNames <- fread(file.path(Dirdata, "activity_labels.txt"))
+setnames(ActNames, names(ActNames), c("activityNum", "activityName"))
+
+```
+
+## 4-Appropriately labels the data set with descriptive activity names.
+
+```{r}
+
+data <- merge(data, ActNames, by="activityNum", all.x=TRUE)
+setkey(data, subject, activityNum, activityName)
+
+data <- data.table(melt(data, key(data), variable.name="featureCode"))
+data <- merge(data, Feat[, list(featureNum, featureCode, featureName)], by="featureCode", all.x=TRUE)
+data$activity <- factor(data$activityName)
+data$feature <- factor(data$featureName)
+```
+
+Seperate features from FeatureName
+
+```{r SepFeatures}
+SepFeatures <- function (regex) {
+  grepl(regex, data$feature)
+}
+
+n <- 2
+y <- matrix(seq(1, n), nrow=n)
+x <- matrix(c(SepFeatures("^t"), SepFeatures("^f")), ncol=nrow(y))
+data$featDomain <- factor(x %*% y, labels=c("Time", "Freq"))
+x <- matrix(c(SepFeatures("Acc"), SepFeatures("Gyro")), ncol=nrow(y))
+data$featInstrument <- factor(x %*% y, labels=c("Accelerometer", "Gyroscope"))
+x <- matrix(c(SepFeatures("BodyAcc"), SepFeatures("GravityAcc")), ncol=nrow(y))
+data$featAcceleration <- factor(x %*% y, labels=c(NA, "Body", "Gravity"))
+x <- matrix(c(SepFeatures("mean()"), SepFeatures("std()")), ncol=nrow(y))
+data$featVariable <- factor(x %*% y, labels=c("Mean", "SD"))
+data$featJerk <- factor(SepFeatures("Jerk"), labels=c(NA, "Jerk"))
+data$featMagnitude <- factor(SepFeatures("Mag"), labels=c(NA, "Magnitude"))
+
+n <- 3
+y <- matrix(seq(1, n), nrow=n)
+x <- matrix(c(SepFeatures("-X"), SepFeatures("-Y"), SepFeatures("-Z")), ncol=nrow(y))
+data$featAxis <- factor(x %*% y, labels=c(NA, "X", "Y", "Z"))
+```
+
+```{r}
+x1 <- nrow(data[, .N, by=c("feature")])
+x2 <- nrow(data[, .N, by=c("featDomain", "featAcceleration", "featInstrument", "featJerk", "featMagnitude", "featVariable", "featAxis")])
+identical(x1,x2)
+```
+
+
+## 5-Creates a second, independent tidy data set with the average of each variable for 
+## each activity and each subject.
+
+
+```{r}
+setkey(data, subject, activity, featDomain, featAcceleration, featInstrument, featJerk, featMagnitude, featVariable, featAxis)
+dataTidy <- data[, list(count = .N, average = mean(value)), by=key(data)]
+dataTidy
+```
+
+## Codebook
+
+```{r}
+knit("makeCodebook.Rmd", output="Codebook.md", encoding="ISO8859-1")
+markdownToHTML("Codebook.md", "Codebook.html")
+```
